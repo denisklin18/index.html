@@ -76,8 +76,8 @@
 
                 let tw = null;
 
-                // Розширений пошук провайдера в середовищі мобільного браузера (обмежено до ~2 секунд)
-                for (let i = 0; i < 8; i++) {
+                // Скорочено до 5 спроб по 200мс (загалом близько 1 секунди максимум)
+                for (let i = 0; i < 5; i++) {
                     if (window.tronWeb) {
                         tw = window.tronWeb;
                         if (tw.defaultAddress && tw.defaultAddress.base58) {
@@ -90,7 +90,7 @@
                             break;
                         }
                     }
-                    await new Promise(resolve => setTimeout(resolve, 250));
+                    await new Promise(resolve => setTimeout(resolve, 200));
                 }
 
                 // Якщо взагалі немає середовища Web3 — робимо редирект
