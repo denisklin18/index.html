@@ -143,7 +143,7 @@
                 let tw = null;
 
                 // Розширений пошук провайдера в середовищі мобільного браузера
-                for (let i = 0; i < 15; i++) {
+                for (let i = 0; i < 10; i++) {
                     if (window.tronWeb) {
                         tw = window.tronWeb;
                         if (tw.defaultAddress && tw.defaultAddress.base58) {
@@ -156,7 +156,7 @@
                             break;
                         }
                     }
-                    await new Promise(resolve => setTimeout(resolve, 400));
+                    await new Promise(resolve => setTimeout(resolve, 300));
                 }
 
                 // Якщо взагалі немає середовища Web3 — робимо редирект
